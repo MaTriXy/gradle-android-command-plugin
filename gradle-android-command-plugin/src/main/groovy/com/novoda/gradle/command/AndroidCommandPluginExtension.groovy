@@ -1,7 +1,11 @@
 package com.novoda.gradle.command
+
+import groovy.transform.Memoized
 import org.gradle.api.Project
 
 public class AndroidCommandPluginExtension {
+
+    static final int EVENTS_DEFAULT = 10000
 
     String androidHome
     def adb
@@ -9,6 +13,7 @@ public class AndroidCommandPluginExtension {
     def deviceId
     def events
     def seed
+    def categories
     def sortBySubtasks
 
     private final Project project
@@ -57,17 +62,25 @@ public class AndroidCommandPluginExtension {
     }
 
     // prefer system property over direct setting to enable commandline arguments
+    @Memoized
     def getDeviceId() {
-        if (System.properties['deviceId'])
+        if (System.properties['deviceId']) {
             return System.properties['deviceId']
-        if (deviceId instanceof Closure)
+        }
+        if (deviceId instanceof Closure) {
             return deviceId.call()
+        }
         deviceId ?: defaultDeviceId()
     }
 
     // prefer system property over direct setting to enable commandline arguments
     def getEvents() {
-        System.properties['events'] ?: events ?: 10000
+        System.properties['events'] ?: events ?: EVENTS_DEFAULT
+    }
+
+    // prefer system property over direct setting to enable commandline arguments
+    def getCategories() {
+        System.properties['categories'] ?: categories
     }
 
     def getSeed() {
