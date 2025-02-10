@@ -1,0 +1,151 @@
+apply plugin: 'com.android.application'
+// apply AFTER android plugin
+apply plugin: 'com.novoda.android-command'
+
+android {
+    compileSdkVersion 27
+
+    defaultConfig {
+        minSdkVersion 14
+        targetSdkVersion 27
+    }
+
+    buildTypes {
+        release.signingConfig debug.signingConfig
+        QA.signingConfig debug.signingConfig
+    }
+
+    productFlavors {
+
+        flavorDimensions 'pricing', 'releaseType'
+
+        beta {
+            dimension 'releaseType'
+        }
+
+        normal {
+            dimension 'releaseType'
+        }
+
+        free {
+            dimension 'pricing'
+        }
+
+        paid {
+            dimension 'pricing'
+        }
+    }
+
+    command {
+        deviceId {
+            def apiLevel = defaultConfig.minSdkVersion.getApiLevel()
+            def minSdkDevice = devices().find { it.sdkVersion() >= apiLevel }
+            if (!minSdkDevice) {
+                throw new IllegalStateException("No device found running android version >= ${apiLevel}")
+            }
+            minSdkDevice.id
+        }
+
+        monkey {
+            events 1000
+            categories 'android.intent.category.ONLY_ME', 'android.intent.category.MONKEY'
+        }
+        
+        // More info: https://github.com/novoda/gradle-android-command-plugin#input-scripting
+        scripts {
+            autoLogin {
+                execute {
+                    2.times {
+                        text 'bob'
+                        enter()
+                    }
+                    enter()
+                }
+            }
+
+            pressBack.execute {
+                back()
+            }
+        }
+
+        // More info: https://github.com/novoda/gradle-android-command-plugin#demo-mode
+        demoMode {
+            clock.hhmm '1134'
+            network {
+                wifi 'show'
+                level '3'
+            }
+        }
+
+        // More info: https://github.com/novoda/gradle-android-command-plugin#install
+        install {
+            fromGooglePlay {
+                description "Installs with flag Play Store"
+                // Note: here flags are lazy evaluated
+                customFlags {
+                    ['-i', 'com.android.vending']
+                }
+            }
+
+            allowingDowngrade {
+                description "Installs with -d flag"
+                customFlags = ['-d']
+            }
+
+            currentUser.customFlags = ['--user', 'current']
+        }
+   }
+}
+
+task listDevices doLast {
+    println 'Attached devices:'
+    android.command.devices().each {
+        println it
+    }
+}
+
+task dumpActivityStack(type: com.novoda.gradle.command.ActivityStack)
+
+/**
+ * Sample task that installs APKs of all variants on a device.
+ *
+ * Device can also be specified like below:
+ * ./gradlew installDeviceAllVariants -DdeviceId=SERIAL_NUMBER
+ */
+def installAllTask = task installDeviceAllVariants {
+    description = 'Install APKs for all variants on a specified device'
+    group = 'install'
+}
+android.applicationVariants.all {
+    installAllTask.dependsOn tasks.findByName("installDevice${it.name.capitalize()}")
+}
+
+/**
+ * Uses the Files task type to backup photos on the device to
+ * some local directory.
+ * Only pulls files that are not yet backed up.
+ */
+task syncPhotos(type: com.novoda.gradle.command.Files) {
+    deviceId {
+        def moto = android.command.devices().find { it.brand() == 'motorola' }
+        if (!moto) {
+            throw new GroovyRuntimeException('No Motorola device found')
+        }
+        moto.id
+    }
+    script {
+        def deviceImageDir = '/sdcard/DCIM/Camera/'
+        def backupDir = mkdir('motoPhoto')
+
+        list(deviceImageDir).findAll { image ->
+            image.name.endsWith('jpg') && !image.name.contains(':nopm:')
+        }
+        .findAll { image ->
+            !new File(backupDir.path, image.name).exists()
+        }
+        .each { image ->
+            println image
+            pull image.path + image.name, backupDir.path
+        }
+    }
+}
